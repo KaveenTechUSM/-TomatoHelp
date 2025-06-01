@@ -1,0 +1,10 @@
+{
+  "files": {
+    "main.js": "/-TomatoHelp/static/js/main.b9955aac.js",
+    "index.html": "/-TomatoHelp/index.html",
+    "main.b9955aac.js.map": "/-TomatoHelp/static/js/main.b9955aac.js.map"
+  },
+  "entrypoints": [
+    "static/js/main.b9955aac.js"
+  ]
+}
