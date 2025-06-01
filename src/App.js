@@ -6,7 +6,22 @@ import { getDatabase, ref, onValue, push, set } from 'firebase/database';
 // Main App Component
 function App() {
   // State to manage the current page view
-  const [currentPage, setCurrentPage] = useState('home');
+  // Initialize currentPage from URL hash or default to 'home'
+  const getInitialPage = () => {
+    const hash = window.location.hash.substring(1); // Remove the '#'
+    // Map hash to page name, default to 'home' if hash is empty or unrecognized
+    switch (hash) {
+      case 'home': return 'home';
+      case 'environmental': return 'environmental';
+      case 'sowing': return 'sowing';
+      case 'care_general': return 'care_general';
+      case 'care_emergency': return 'care_emergency';
+      case 'harvest': return 'harvest';
+      default: return 'home';
+    }
+  };
+
+  const [currentPage, setCurrentPage] = useState(getInitialPage());
   // State for Firebase instances and user object
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
@@ -67,6 +82,31 @@ function App() {
     }
   }, []); // Empty dependency array means this runs once on component mount
 
+  // Effect to handle URL hash changes and update currentPage
+  useEffect(() => {
+    const handleHashChange = () => {
+      setCurrentPage(getInitialPage());
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    // Set initial hash if not already set (e.g., first load on home page)
+    if (!window.location.hash) {
+      window.location.hash = '#home';
+    }
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, []);
+
+  // Effect to update URL hash when currentPage changes
+  useEffect(() => {
+    // Only update hash if it doesn't already match the current page to avoid redundant history entries
+    if (`#${currentPage}` !== window.location.hash) {
+      window.location.hash = currentPage;
+    }
+  }, [currentPage]);
+
   // Navbar Component
   const Navbar = () => {
     const [isNavOpen, setIsNavOpen] = useState(false);
@@ -77,6 +117,7 @@ function App() {
         try {
           await signOut(auth);
           setCurrentPage('home'); // Redirect to home or login page after logout
+          window.location.hash = '#home'; // Update hash on logout
           console.log("User logged out successfully.");
         } catch (error) {
           console.error("Error logging out:", error);
@@ -84,10 +125,18 @@ function App() {
       }
     };
 
+    // Helper function to handle navigation and close dropdowns
+    const navigateTo = (pageName) => {
+      setCurrentPage(pageName);
+      setIsNavOpen(false); // Close mobile nav
+      setIsCareDropdownOpen(false); // Close care dropdown
+      window.location.hash = `#${pageName}`; // Update URL hash
+    };
+
     return (
       <nav className="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
         <div className="container-fluid">
-          <a className="navbar-brand" href="#" onClick={() => setCurrentPage('home')}>TomatoHelp</a>
+          <a className="navbar-brand" href="#home" onClick={() => navigateTo('home')}>TomatoHelp</a>
           <button
             className="navbar-toggler"
             type="button"
@@ -102,26 +151,29 @@ function App() {
           </button>
           <div className={`collapse navbar-collapse ${isNavOpen ? 'show' : ''} justify-content-end`} id="navbarNav">
             <ul className="navbar-nav">
-              <li className="nav-item"><a className={`nav-link ${currentPage === 'home' ? 'active' : ''}`} href="#" onClick={() => { setCurrentPage('home'); setIsNavOpen(false); }}>Home</a></li>
-              <li className="nav-item"><a className={`nav-link ${currentPage === 'environmental' ? 'active' : ''}`} href="#" onClick={() => { setCurrentPage('environmental'); setIsNavOpen(false); }}>Environmental Data</a></li>
-              <li className="nav-item"><a className={`nav-link ${currentPage === 'sowing' ? 'active' : ''}`} href="#" onClick={() => { setCurrentPage('sowing'); setIsNavOpen(false); }}>Sowing</a></li>
+              <li className="nav-item"><a className={`nav-link ${currentPage === 'home' ? 'active' : ''}`} href="#home" onClick={() => navigateTo('home')}>Home</a></li>
+              <li className="nav-item"><a className={`nav-link ${currentPage === 'environmental' ? 'active' : ''}`} href="#environmental" onClick={() => navigateTo('environmental')}>Environmental Data</a></li>
+              <li className="nav-item"><a className={`nav-link ${currentPage === 'sowing' ? 'active' : ''}`} href="#sowing" onClick={() => navigateTo('sowing')}>Sowing</a></li>
               <li className="nav-item dropdown">
                 <a
                   className={`nav-link dropdown-toggle ${currentPage.startsWith('care') ? 'active' : ''}`}
-                  href="#"
+                  href="#care" // Set a specific hash for the dropdown parent
                   role="button"
                   data-bs-toggle="dropdown"
                   aria-expanded={isCareDropdownOpen ? "true" : "false"}
-                  onClick={() => setIsCareDropdownOpen(!isCareDropdownOpen)}
+                  onClick={(e) => {
+                    e.preventDefault(); // Prevent default hash navigation for the dropdown toggle
+                    setIsCareDropdownOpen(!isCareDropdownOpen);
+                  }}
                 >
                   Care
                 </a>
                 <ul className={`dropdown-menu dropdown-menu-end ${isCareDropdownOpen ? 'show' : ''}`}>
-                  <li><a className={`dropdown-item ${currentPage === 'care_general' ? 'active' : ''}`} href="#" onClick={() => { setCurrentPage('care_general'); setIsNavOpen(false); setIsCareDropdownOpen(false); }}>General</a></li>
-                  <li><a className={`dropdown-item ${currentPage === 'care_emergency' ? 'active' : ''}`} href="#" onClick={() => { setCurrentPage('care_emergency'); setIsNavOpen(false); setIsCareDropdownOpen(false); }}>Emergency</a></li>
+                  <li><a className={`dropdown-item ${currentPage === 'care_general' ? 'active' : ''}`} href="#care_general" onClick={() => navigateTo('care_general')}>General</a></li>
+                  <li><a className={`dropdown-item ${currentPage === 'care_emergency' ? 'active' : ''}`} href="#care_emergency" onClick={() => navigateTo('care_emergency')}>Emergency</a></li>
                 </ul>
               </li>
-              <li className="nav-item"><a className={`nav-link ${currentPage === 'harvest' ? 'active' : ''}`} href="#" onClick={() => { setCurrentPage('harvest'); setIsNavOpen(false); }}>Harvest</a></li>
+              <li className="nav-item"><a className={`nav-link ${currentPage === 'harvest' ? 'active' : ''}`} href="#harvest" onClick={() => navigateTo('harvest')}>Harvest</a></li>
               {user && user.isAnonymous === false && ( // Only show logout if not anonymous
                 <li className="nav-item">
                   <button className="nav-link btn btn-link" onClick={handleLogout} style={{ color: 'white', textDecoration: 'none' }}>Logout</button>
