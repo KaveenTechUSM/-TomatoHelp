@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TomatoHelp - View Harvest Data</title>
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+  />
+  <style>
+    body {
+      background-image: url('https://images-prod.healthline.com/hlcmsresource/images/AN_images/tomatoes-1296x728-feature.jpg');
+      background-size: cover;
+      background-position: center;
+      color: white;
+      min-height: 100vh;
+      padding-top: 70px;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    .content {
+      background: rgba(0, 0, 0, 0.6);
+      padding: 2rem;
+      border-radius: 1rem;
+      width: 800px;
+      max-width: 100%;
+      margin: auto;
+      flex-grow: 1;
+    }
+    table {
+      color: white;
+    }
+    th, td {
+      text-align: center;
+      vertical-align: middle;
+    }
+    nav .nav-link.active {
+      font-weight: 700;
+      background-color: transparent !important;
+      color: white !important;
+    }
+    footer {
+      text-align: center;
+      padding: 1rem;
+      color: white;
+      font-size: 0.9rem;
+    }
+    .btn-back {
+      margin-top: 1rem;
+      background-color: #6c757d;
+      border: none;
+      color: white;
+      font-weight: 600;
+      width: 120px;
+    }
+    .btn-back:hover {
+      background-color: #5a6268;
+      color: white;
+    }
+    img.img-thumbnail {
+      max-width: 100px;
+      height: auto;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="index.html">TomatoHelp</a>
+      <button
+        class="navbar-toggler"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#navbarNav"
+      >
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div
+        class="collapse navbar-collapse justify-content-end"
+        id="navbarNav"
+      >
+        <ul class="navbar-nav">
+          <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+          <li class="nav-item">
+            <a class="nav-link" href="environmental.html"
+              >Environmental Data</a
+            >
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="sowing.html">Sowing</a>
+          </li>
+          <li class="nav-item dropdown">
+            <a
+              class="nav-link dropdown-toggle"
+              href="#"
+              role="button"
+              data-bs-toggle="dropdown"
+              >Care</a
+            >
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="care_general.html">General</a></li>
+              <li><a class="dropdown-item" href="care_emergency.html">Emergency</a></li>
+            </ul>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link active" aria-current="page" href="harvest.html"
+              >Harvest</a
+            >
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="content">
+    <h2 class="text-center mb-4">Harvest Records</h2>
+    <div class="table-responsive">
+      <table class="table table-bordered table-dark">
+        <thead>
+          <tr>
+            <th>Harvest Date</th>
+            <th>Quantity</th>
+            <th>Quality</th>
+            <th>Notes</th>
+            <th>Photo</th>
+          </tr>
+        </thead>
+        <tbody id="harvestTableBody">
+          <!-- Dynamic rows from Firebase will go here -->
+        </tbody>
+      </table>
+
+      <button class="btn btn-back" onclick="location.href='harvest.html'">Go Back</button>
+    </div>
+  </div>
+
+  <footer>
+    &copy; 2025 TomatoHelp. All rights reserved.
+  </footer>
+
+  <!-- Firebase -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
+
+    const harvestTableBody = document.getElementById("harvestTableBody");
+
+    function formatDate(dateString) {
+      const d = new Date(dateString);
+      if (isNaN(d)) return dateString;
+      return d.toISOString().split('T')[0]; // YYYY-MM-DD
+    }
+
+    onValue(ref(database, "harvest"), (snapshot) => {
+      harvestTableBody.innerHTML = ""; // Clear existing rows
+      const data = snapshot.val();
+      if (data) {
+        Object.keys(data).forEach((key) => {
+          const entry = data[key];
+          const tr = document.createElement("tr");
+
+          const dateTd = document.createElement("td");
+          dateTd.textContent = formatDate(entry.date);
+          tr.appendChild(dateTd);
+
+          const quantityTd = document.createElement("td");
+          quantityTd.textContent = entry.quantity + " kg";
+          tr.appendChild(quantityTd);
+
+          const qualityTd = document.createElement("td");
+          qualityTd.textContent = entry.quality;
+          tr.appendChild(qualityTd);
+
+          const notesTd = document.createElement("td");
+          notesTd.textContent = entry.notes || "-";
+          tr.appendChild(notesTd);
+
+          const photoTd = document.createElement("td");
+          if (entry.photo) {
+            const img = document.createElement("img");
+            img.src = entry.photo;
+            img.alt = "Harvest photo";
+            img.classList.add("img-thumbnail");
+            photoTd.appendChild(img);
+          } else {
+            photoTd.textContent = "-";
+          }
+          tr.appendChild(photoTd);
+
+          harvestTableBody.appendChild(tr);
+        });
+      } else {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 5;
+        td.textContent = "No harvest records found.";
+        td.classList.add("text-center");
+        tr.appendChild(td);
+        harvestTableBody.appendChild(tr);
+      }
+    });
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TomatoHelp - General Care</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"/>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <style>
+    body {
+      background-image: url('https://images-prod.healthline.com/hlcmsresource/images/AN_images/tomatoes-1296x728-feature.jpg');
+      background-size: cover;
+      background-position: center;
+      color: white;
+      min-height: 100vh;
+      padding-top: 70px;
+      display: flex;
+      flex-direction: column;
+    }
+    .content {
+      background: rgba(0, 0, 0, 0.6);
+      padding: 2rem;
+      border-radius: 1rem;
+      max-width: 900px;
+      margin: auto;
+    }
+    table {
+      color: white;
+    }
+    th, td {
+      text-align: center;
+      vertical-align: middle;
+    }
+    .status-good {
+      color: #4CAF50;
+      font-weight: bold;
+    }
+    .status-bad {
+      color: #E94B3C;
+      font-weight: bold;
+    }
+    .caption-container {
+      margin-top: 2rem;
+      text-align: center;
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+    .response-block {
+      max-width: 300px;
+    }
+    .caption-container img {
+      width: 100%;
+      border-radius: 1rem;
+      box-shadow: 0 0 10px rgba(0,0,0,0.7);
+    }
+    .caption-text {
+      margin-top: 0.8rem;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    footer {
+      margin-top: auto;
+  
+      padding: 1rem;
+      text-align: center;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="index.html">TomatoHelp</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    
+    <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+      <ul class="navbar-nav">
+        <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+        <li class="nav-item"><a class="nav-link" href="environmental.html">Environmental Data</a></li>
+        <li class="nav-item"><a class="nav-link" href="sowing.html">Sowing</a></li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle active" aria-current="page" href="#" role="button" data-bs-toggle="dropdown">Care</a>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item active" aria-current="page" href="care_general.html">General</a></li>
+            <li><a class="dropdown-item" href="care_emergency.html">Emergency</a></li>
+          </ul>
+        </li>
+        <li class="nav-item"><a class="nav-link" href="harvest.html">Harvest</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="content">
+  <h2 class="mb-4 text-center">General Care</h2>
+
+  <div class="table-responsive">
+    <table class="table table-bordered table-dark">
+      <thead>
+        <tr>
+          <th>Parameter</th>
+          <th>Current Value</th>
+          <th>Ideal Range</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Temperature (°C)</td>
+          <td id="temp">-</td>
+          <td>20 - 28</td>
+          <td id="tempStatus">-</td>
+        </tr>
+        <tr>
+          <td>Humidity (%)</td>
+          <td id="humidity">-</td>
+          <td>50 - 70</td>
+          <td id="humidityStatus">-</td>
+        </tr>
+        <tr>
+          <td>Soil Moisture (%)</td>
+          <td id="moisture">-</td>
+          <td>40 - 60</td>
+          <td id="moistureStatus">-</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="caption-container" id="responses"></div>
+</div>
+
+<footer>
+  &copy; 2025 TomatoHelp. All rights reserved.
+</footer>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  const tempEl = document.getElementById("temp");
+  const humEl = document.getElementById("humidity");
+  const moistEl = document.getElementById("moisture");
+  const tempStatusEl = document.getElementById("tempStatus");
+  const humStatusEl = document.getElementById("humidityStatus");
+  const moistStatusEl = document.getElementById("moistureStatus");
+  const responses = document.getElementById("responses");
+
+  db.ref("sensorData").on("value", (snapshot) => {
+    const data = snapshot.val();
+    if (!data) return;
+
+    const temp = data.temperature;
+    const hum = data.humidity;
+    const moist = data.soilMoisture;
+
+    tempEl.textContent = temp;
+    humEl.textContent = hum;
+    moistEl.textContent = moist;
+
+    const tempGood = temp >= 20 && temp <= 28;
+    const humGood = hum >= 50 && hum <= 70;
+    const moistGood = moist >= 40 && moist <= 60;
+
+    tempStatusEl.textContent = tempGood ? "Good ✅" : "Bad ❌";
+    tempStatusEl.className = tempGood ? "status-good" : "status-bad";
+
+    humStatusEl.textContent = humGood ? "Good ✅" : "Bad ❌";
+    humStatusEl.className = humGood ? "status-good" : "status-bad";
+
+    moistStatusEl.textContent = moistGood ? "Good ✅" : "Bad ❌";
+    moistStatusEl.className = moistGood ? "status-good" : "status-bad";
+
+    // Responses logic
+    responses.innerHTML = "";
+    const badResponses = [];
+
+    if (!tempGood && temp > 28) {
+      badResponses.push({
+        img: "GCare-hot.png",
+        text: "It’s so hottt… I WANT AC"
+      });
+    }
+    if (!humGood && hum < 50) {
+      badResponses.push({
+        img: "GCare-humidpng",
+        text: "It’s so dry… I WANT HUMIDIFIER"
+      });
+    }
+    if (!moistGood && moist < 40) {
+      badResponses.push({
+        img: "GCare-thirst.png",
+        text: "I am thirsty... GIVE ME WATER"
+      });
+    }
+
+    if (tempGood && humGood && moistGood) {
+      responses.innerHTML = `
+        <div class="response-block">
+          <img src="GCare-happy.png" alt="Happy Tomato"/>
+          <div class="caption-text">I'm  well taken care of... I LOVE YOU...</div>
+        </div>`;
+    } else if (!tempGood && !humGood && !moistGood) {
+      responses.innerHTML = `
+        <div class="response-block">
+          <img src="GCare-sad.png" alt="Very Sad Tomato"/>
+          <div class="caption-text">I'm not well taken care of... I HATE YOU 💔</div>
+        </div>`;
+    } else {
+      badResponses.slice(0, 2).forEach(resp => {
+        responses.innerHTML += `
+          <div class="response-block">
+            <img src="${resp.img}" alt="Condition"/>
+            <div class="caption-text">${resp.text}</div>
+          </div>`;
+      });
+    }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TomatoHelp - Sowing</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+  <style>
+    body {
+      background-image: url('https://images-prod.healthline.com/hlcmsresource/images/AN_images/tomatoes-1296x728-feature.jpg');
+      background-size: cover;
+      background-position: center;
+      color: white;
+      min-height: 100vh;
+      padding-top: 70px;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    .content {
+      background: rgba(0, 0, 0, 0.6);
+      padding: 2rem;
+      border-radius: 1rem;
+      max-width: 900px;
+      margin: auto;
+      flex-grow: 1;
+    }
+    table {
+      color: white;
+    }
+    th, td {
+      text-align: center;
+      vertical-align: middle;
+    }
+    .status-good {
+      color: #4CAF50; /* green */
+      font-weight: bold;
+    }
+    .status-bad {
+      color: #E94B3C; /* red */
+      font-weight: bold;
+    }
+    .caption-container {
+      margin-top: 2rem;
+      text-align: center;
+    }
+    .caption-container img {
+      max-width: 300px;
+      border-radius: 1rem;
+      box-shadow: 0 0 10px rgba(0,0,0,0.7);
+    }
+    .caption-text {
+      margin-top: 0.8rem;
+      font-size: 1.2rem;
+      font-weight: 600;
+    }
+    footer {
+      color: white;
+      text-align: center;
+      padding: 1rem 0;
+      /* No background as requested */
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="index.html">TomatoHelp</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+      <ul class="navbar-nav">
+        <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+        <li class="nav-item"><a class="nav-link" href="environmental.html">Environmental Data</a></li>
+        <li class="nav-item"><a class="nav-link active" aria-current="page" href="sowing.html">Sowing</a></li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Care</a>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="care_general.html">General</a></li>
+            <li><a class="dropdown-item" href="care_emergency.html">Emergency</a></li>
+          </ul>
+        </li>
+        <li class="nav-item"><a class="nav-link" href="harvest.html">Harvest</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="content">
+  <h2 class="mb-4 text-center">Sowing Readiness</h2>
+
+  <div class="table-responsive">
+    <table class="table table-bordered table-dark">
+      <thead>
+        <tr>
+          <th>Parameter</th>
+          <th>Current Value</th>
+          <th>Ideal Range</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Temperature (°C)</td>
+          <td id="tempValue">--</td>
+          <td>18 - 25</td>
+          <td id="tempStatus">--</td>
+        </tr>
+        <tr>
+          <td>Humidity (%)</td>
+          <td id="humidityValue">--</td>
+          <td>60 - 70</td>
+          <td id="humidityStatus">--</td>
+        </tr>
+        <tr>
+          <td>Soil Moisture (%)</td>
+          <td id="soilMoistureValue">--</td>
+          <td>40 - 60</td>
+          <td id="soilMoistureStatus">--</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="caption-container">
+    <img id="statusImage" src="Sow-happy.png" alt="Status Image" width="300" height="200" />
+    <div class="caption-text" id="statusText">Loading data...</div>
+  </div>
+</div>
+
+<footer>
+  &copy; 2025 TomatoHelp. All rights reserved.
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+<script>
+  // Your Firebase config here:
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  // Ideal ranges for parameters
+  const idealRanges = {
+    temperature: { min: 18, max: 25 },
+    humidity: { min: 60, max: 70 },
+    soilMoisture: { min: 40, max: 60 }
+  };
+
+  const tempValueEl = document.getElementById("tempValue");
+  const humidityValueEl = document.getElementById("humidityValue");
+  const soilMoistureValueEl = document.getElementById("soilMoistureValue");
+
+  const tempStatusEl = document.getElementById("tempStatus");
+  const humidityStatusEl = document.getElementById("humidityStatus");
+  const soilMoistureStatusEl = document.getElementById("soilMoistureStatus");
+
+  const statusImage = document.getElementById("statusImage");
+  const statusText = document.getElementById("statusText");
+
+  // Listen for environment data changes
+  db.ref("environment").on("value", (snapshot) => {
+    const data = snapshot.val();
+
+    if (!data) {
+      // No data yet
+      tempValueEl.textContent = "--";
+      humidityValueEl.textContent = "--";
+      soilMoistureValueEl.textContent = "--";
+
+      tempStatusEl.textContent = "--";
+      humidityStatusEl.textContent = "--";
+      soilMoistureStatusEl.textContent = "--";
+
+      statusImage.src = "loading.png"; // Use a loading image or leave blank
+      statusText.textContent = "Loading data...";
+      return;
+    }
+
+    // Extract values (or default 0 if missing)
+    const temp = data.temperature ?? 0;
+    const humidity = data.humidity ?? 0;
+    const soilMoisture = data.soilMoisture ?? 0;
+
+    // Update values in table
+    tempValueEl.textContent = temp;
+    humidityValueEl.textContent = humidity;
+    soilMoistureValueEl.textContent = soilMoisture;
+
+    // Check status per parameter
+    function checkStatus(value, min, max) {
+      return value >= min && value <= max;
+    }
+
+    const tempGood = checkStatus(temp, idealRanges.temperature.min, idealRanges.temperature.max);
+    const humidityGood = checkStatus(humidity, idealRanges.humidity.min, idealRanges.humidity.max);
+    const soilMoistureGood = checkStatus(soilMoisture, idealRanges.soilMoisture.min, idealRanges.soilMoisture.max);
+
+    // Update status text and colors
+    tempStatusEl.textContent = tempGood ? "Good ✅" : "Bad ❌";
+    tempStatusEl.className = tempGood ? "status-good" : "status-bad";
+
+    humidityStatusEl.textContent = humidityGood ? "Good ✅" : "Bad ❌";
+    humidityStatusEl.className = humidityGood ? "status-good" : "status-bad";
+
+    soilMoistureStatusEl.textContent = soilMoistureGood ? "Good ✅" : "Bad ❌";
+    soilMoistureStatusEl.className = soilMoistureGood ? "status-good" : "status-bad";
+
+    // Overall readiness check
+    if (tempGood && humidityGood && soilMoistureGood) {
+      // All good
+      statusImage.src = "Sow-happy.png";  // Your "all good" image
+      statusText.textContent = "I am ready for sowing!";
+    } else {
+      // At least one bad
+      statusImage.src = "Sow-sad.png";  // Your "not ready" image
+      statusText.textContent = "I am not ready for sowing yet";
+    }
+  });
+</script>
+</body>
+</html>
