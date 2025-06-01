@@ -1,15 +1,10 @@
 {
   "files": {
-    "main.css": "/-TomatoHelp/static/css/main.9c1bef63.css",
-    "main.js": "/-TomatoHelp/static/js/main.1feb7ae6.js",
-    "static/js/453.2ee7bd33.chunk.js": "/-TomatoHelp/static/js/453.2ee7bd33.chunk.js",
+    "main.js": "/-TomatoHelp/static/js/main.b9955aac.js",
     "index.html": "/-TomatoHelp/index.html",
-    "main.9c1bef63.css.map": "/-TomatoHelp/static/css/main.9c1bef63.css.map",
-    "main.1feb7ae6.js.map": "/-TomatoHelp/static/js/main.1feb7ae6.js.map",
-    "453.2ee7bd33.chunk.js.map": "/-TomatoHelp/static/js/453.2ee7bd33.chunk.js.map"
+    "main.b9955aac.js.map": "/-TomatoHelp/static/js/main.b9955aac.js.map"
   },
   "entrypoints": [
-    "static/css/main.9c1bef63.css",
-    "static/js/main.1feb7ae6.js"
+    "static/js/main.b9955aac.js"
   ]
 }
