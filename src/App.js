@@ -954,14 +954,23 @@ function App() {
     );
   };
 
-  const Home = () => (
-    <div className="main-content flex-grow flex items-center justify-center p-4 pt-24 min-h-screen bg-gray-900 font-inter">
-      <div className="content-box bg-gray-800 bg-opacity-70 p-8 rounded-2xl shadow-2xl text-white text-center border border-gray-700">
-        <h1 className="text-5xl md:text-6xl font-extrabold mb-4 text-white tracking-wide leading-tight">Welcome to TomatoHelp</h1>
-        <p className="text-lg md:text-xl text-gray-200 tracking-wide leading-relaxed">Monitor your tomato growth from sowing to harvest</p>
-      </div>
+const Home = () => (
+  <div
+    className="main-content flex-grow flex items-center justify-center p-4 pt-24 min-h-screen bg-cover bg-center font-inter"
+    style={{ backgroundImage: `url("tomatoes.png")` }}
+  >
+    <div className="content-box bg-black/50 px-10 py-6 rounded-[30px] shadow-2xl text-white text-center w-full max-w-5xl">
+      <h1 className="text-3xl md:text-4xl font-extrabold mb-2 tracking-wide leading-tight">
+        Welcome to TomatoHelp
+      </h1>
+      <p className="text-base md:text-lg text-white/80 tracking-wide leading-relaxed">
+        Monitor your tomato growth from sowing to harvest
+      </p>
     </div>
-  );
+  </div>
+);
+
+
 
   // AuthPage Component for Login/Register
   const AuthPage = ({ auth }) => {
