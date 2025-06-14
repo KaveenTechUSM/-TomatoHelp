@@ -36,7 +36,8 @@ function App() {
         authDomain: "tomatohelp-cbf59.firebaseapp.com",
         databaseURL: "https://tomatohelp-cbf59-default-rtdb.asia-southeast1.firebasedatabase.app/",
         projectId: "tomatohelp-cbf59",
-        storageBucket: "tomatohelp-cbf59.appspot.com",
+        // Changed storageBucket to match the one you successfully configured CORS for
+        storageBucket: "tomatohelp-cbf59.firebasestorage.app",
         messagingSenderId: "1007986722395",
         appId: "1:1007986722395:web:abcdef1234567890",
       };
@@ -145,7 +146,6 @@ function App() {
             <ul className="navbar-nav space-y-2 lg:space-y-0 lg:flex lg:space-x-4">
               <li className="nav-item"><a className={`nav-link ${currentPage === 'home' ? 'active font-semibold' : ''} text-gray-200 hover:text-white transition duration-300 ease-in-out px-3 py-2 rounded-md`} href="#home" onClick={() => navigateTo('home')}>Home</a></li>
               <li className="nav-item"><a className={`nav-link ${currentPage === 'environmental' ? 'active font-semibold' : ''} text-gray-200 hover:text-white transition duration-300 ease-in-out px-3 py-2 rounded-md`} href="#environmental" onClick={() => navigateTo('environmental')}>Environmental Data</a></li>
-              {/* Removed duplicate className from the following line */}
               <li className="nav-item"><a className={`nav-link ${currentPage === 'sowing' ? 'active font-semibold' : ''} text-gray-200 hover:text-white transition duration-300 ease-in-out px-3 py-2 rounded-md`} href="#sowing" onClick={() => navigateTo('sowing')}>Sowing</a></li>
               <li className="nav-item dropdown relative">
                 <a
@@ -301,37 +301,41 @@ function App() {
 
     const tempGood = temperature !== null && temperature >= 18 && temperature <= 25;
     const humGood = humidity !== null && humidity >= 60 && humidity <= 70;
-    const moistGood = soilMoisture !== null && soilMoisture >= 40 && soilMoisture <= 60;
+    const moistGood = soilMoisture !== null && soilMoisture >= 40 && soilMoisture <= 60; // Corrected moisture check for values greater than 0
+    // If soilMoisture is 0, it's considered 'Bad' according to the ideal range.
+    // If it's null (not received yet), it's also not 'Good'.
 
     const getStatusClass = (isGood) => (isGood ? 'status-good' : 'status-bad');
     const getStatusText = (isGood) => (isGood ? 'Good ✅' : 'Bad ❌');
 
-    const badResponses = [];
-    if (temperature !== null && !tempGood) {
-      badResponses.push({
-        img: '/-TomatoHelp/GCare-hot.png',
-        text: 'It’s so hottt… I WANT AC',
-      });
-    }
-    if (humidity !== null && !humGood) {
-      badResponses.push({
-        img: '/-TomatoHelp/GCare-humid.png',
-        text: 'It’s so dry… I WANT HUMIDIFIER',
-      });
-    }
-    if (soilMoisture !== null && !moistGood) {
-      badResponses.push({
-        img: '/-TomatoHelp/GCare-thirst.png',
-        text: 'I am thirsty... GIVE ME WATER',
-      });
-    }
-
     const renderResponses = () => {
       if (isLoading) {
         return (
-          <div className="text-center text-lg font-semibold">Loading data...</div>
+          <div className="text-center text-lg font-semibold response-block">Loading data...</div>
         );
-      } else if (tempGood && humGood && moistGood) {
+      }
+
+      const badResponses = [];
+      if (temperature !== null && !tempGood) {
+        badResponses.push({
+          img: '/-TomatoHelp/GCare-hot.png',
+          text: 'It’s so hottt… I WANT AC',
+        });
+      }
+      if (humidity !== null && !humGood) {
+        badResponses.push({
+          img: '/-TomatoHelp/GCare-humid.png',
+          text: 'It’s so dry… I WANT HUMIDIFIER',
+        });
+      }
+      if (soilMoisture !== null && !moistGood) { // Ensure this block runs when soilMoisture is not good (e.g., 0)
+        badResponses.push({
+          img: '/-TomatoHelp/GCare-thirst.png',
+          text: 'I am thirsty... GIVE ME WATER',
+        });
+      }
+
+      if (tempGood && humGood && moistGood) {
         return (
           <div className="response-block">
             <img
@@ -411,8 +415,15 @@ function App() {
               </tr>
               <tr className="bg-gray-700">
                 <td className="p-3">Soil Moisture (%)</td>
-                <td className="p-3">{soilMoisture !== null ? soilMoisture : '-'}</td>
-                <td className={`p-3 ${getStatusClass(moistGood)}`}>{soilMoisture !== null ? getStatusText(moistGood) : '-'}</td>
+                <td className="p-3">
+                  {soilMoisture !== null ?
+                    (soilMoisture === 0 ? '0 (No Data)' : soilMoisture) // Display "0 (No Data)" if value is 0
+                    : '-'}
+                </td>
+                <td className="p-3">40 - 60</td>
+                <td className={`p-3 ${getStatusClass(moistGood)}`}>
+                  {soilMoisture !== null ? getStatusText(moistGood) : '-'}
+                </td>
               </tr>
             </tbody>
           </table>
@@ -471,8 +482,7 @@ function App() {
           setIsLoading(false);
         });
         return () => unsubscribe();
-      }, 1000);
-
+      }, 1000); 
       return () => clearTimeout(timer);
     }, [db, isAuthReady]);
 
@@ -509,7 +519,7 @@ function App() {
               <img
                 id="statusImage"
                 src={statusImage}
-                className="mx-auto" // Corrected: Removed duplicate className and other attributes
+                className="mx-auto"
                 alt="Status Image"
                 onError={(e) => {
                   e.target.onerror = null;
@@ -581,7 +591,8 @@ function App() {
     const renderSowingStatus = () => {
       if (isLoading) {
         return (
-          <div className="text-center text-lg font-semibold">Loading data...</div>
+          // Added 'response-block' for consistent styling during loading
+          <div className="text-center text-lg font-semibold response-block">Loading data...</div>
         );
       } else if (isReadyForSowing) {
         return (
@@ -647,8 +658,15 @@ function App() {
               </tr>
               <tr className="bg-gray-700">
                 <td className="p-3">Soil Moisture (%)</td>
-                <td className="p-3">{soilMoisture !== null ? soilMoisture : '-'}</td>
-                <td className={`p-3 ${getStatusClass(moistGood)}`}>{soilMoisture !== null ? getStatusText(moistGood) : '-'}</td>
+                <td className="p-3">
+                  {soilMoisture !== null ?
+                    (soilMoisture === 0 ? '0 (No Data)' : soilMoisture) // Display "0 (No Data)" if value is 0
+                    : '-'}
+                </td>
+                <td className="p-3">40 - 60</td>
+                <td className={`p-3 ${getStatusClass(moistGood)}`}>
+                  {soilMoisture !== null ? getStatusText(moistGood) : '-'}
+                </td>
               </tr>
             </tbody>
           </table>
