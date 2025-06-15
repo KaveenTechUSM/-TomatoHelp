@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { getDatabase, ref, onValue, push, set, remove } from 'firebase/database';
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'; // Import Firebase Storage functions
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 // Main App Component
 function App() {
@@ -16,7 +16,8 @@ function App() {
       case 'care_general': return 'care_general';
       case 'care_emergency': return 'care_emergency';
       case 'harvest': return 'harvest';
-      default: return 'home';
+      case 'login': return 'login';
+      default: return 'home'; // Default to home initially
     }
   };
 
@@ -24,9 +25,11 @@ function App() {
   // State for Firebase instances and user object
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
-  const [storage, setStorage] = useState(null); // Firebase Storage instance
+  const [storage, setStorage] = useState(null);
   const [user, setUser] = useState(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [userId, setUserId] = useState(crypto.randomUUID()); // Use a random UUID for all users for public data handling
+  const [appId, setAppId] = useState(''); // App ID is still needed for storage paths, but not Realtime DB root
 
   // Firebase Initialization and Authentication
   useEffect(() => {
@@ -36,37 +39,44 @@ function App() {
         authDomain: "tomatohelp-cbf59.firebaseapp.com",
         databaseURL: "https://tomatohelp-cbf59-default-rtdb.asia-southeast1.firebasedatabase.app/",
         projectId: "tomatohelp-cbf59",
-        // Changed storageBucket to match the one you successfully configured CORS for
         storageBucket: "tomatohelp-cbf59.firebasestorage.app",
         messagingSenderId: "1007986722395",
         appId: "1:1007986722395:web:abcdef1234567890",
       };
 
+      const currentAppId = firebaseConfig.appId;
+      setAppId(currentAppId); // Set the appId for potential use in Storage paths
+
       const app = initializeApp(firebaseConfig);
       const realtimeDb = getDatabase(app);
       const firebaseAuth = getAuth(app);
-      const firebaseStorage = getStorage(app); // Get Firebase Storage instance
+      const firebaseStorage = getStorage(app);
 
       setDb(realtimeDb);
       setAuth(firebaseAuth);
-      setStorage(firebaseStorage); // Set Storage instance
+      setStorage(firebaseStorage);
 
       const unsubscribe = onAuthStateChanged(firebaseAuth, async (currentUser) => {
         if (currentUser) {
           setUser(currentUser);
+          setUserId(currentUser.uid); // Set userId from authenticated user's UID
         } else {
+          // If no user is logged in, attempt anonymous sign-in or use custom token if available
           if (typeof __initial_auth_token !== 'undefined') {
             try {
               await signInWithCustomToken(firebaseAuth, __initial_auth_token);
               setUser(firebaseAuth.currentUser);
+              setUserId(firebaseAuth.currentUser.uid);
             } catch (error) {
               console.error("Error signing in with custom token:", error);
               await signInAnonymously(firebaseAuth);
               setUser(firebaseAuth.currentUser);
+              setUserId(firebaseAuth.currentUser.uid || crypto.randomUUID());
             }
           } else {
             await signInAnonymously(firebaseAuth);
             setUser(firebaseAuth.currentUser);
+            setUserId(firebaseAuth.currentUser.uid || crypto.randomUUID());
           }
         }
         setIsAuthReady(true);
@@ -110,8 +120,9 @@ function App() {
       if (auth) {
         try {
           await signOut(auth);
-          setCurrentPage('home');
-          window.location.hash = '#home';
+          // Redirect to login page after logout
+          setCurrentPage('login');
+          window.location.hash = '#login';
           console.log("User logged out successfully.");
         } catch (error) {
           console.error("Error logging out:", error);
@@ -146,6 +157,7 @@ function App() {
             <ul className="navbar-nav space-y-2 lg:space-y-0 lg:flex lg:space-x-4">
               <li className="nav-item"><a className={`nav-link ${currentPage === 'home' ? 'active font-semibold' : ''} text-gray-200 hover:text-white transition duration-300 ease-in-out px-3 py-2 rounded-md`} href="#home" onClick={() => navigateTo('home')}>Home</a></li>
               <li className="nav-item"><a className={`nav-link ${currentPage === 'environmental' ? 'active font-semibold' : ''} text-gray-200 hover:text-white transition duration-300 ease-in-out px-3 py-2 rounded-md`} href="#environmental" onClick={() => navigateTo('environmental')}>Environmental Data</a></li>
+              {/* Removed duplicate className here */}
               <li className="nav-item"><a className={`nav-link ${currentPage === 'sowing' ? 'active font-semibold' : ''} text-gray-200 hover:text-white transition duration-300 ease-in-out px-3 py-2 rounded-md`} href="#sowing" onClick={() => navigateTo('sowing')}>Sowing</a></li>
               <li className="nav-item dropdown relative">
                 <a
@@ -168,7 +180,7 @@ function App() {
                 </ul>
               </li>
               <li className="nav-item"><a className={`nav-link ${currentPage === 'harvest' ? 'active font-semibold' : ''} text-gray-200 hover:text-white transition duration-300 ease-in-out px-3 py-2 rounded-md`} href="#harvest" onClick={() => navigateTo('harvest')}>Harvest</a></li>
-              {user && user.isAnonymous === false && (
+              {user && !user.isAnonymous && (
                 <li className="nav-item">
                   <button className="nav-link btn btn-link text-gray-200 hover:text-red-400 transition duration-300 ease-in-out px-3 py-2 rounded-md" onClick={handleLogout} style={{ textDecoration: 'none' }}>Logout</button>
                 </li>
@@ -180,26 +192,34 @@ function App() {
     );
   };
 
-  // EnvironmentalData Component
-  const EnvironmentalData = ({ db, userId, isAuthReady }) => {
+  // EnvironmentalData Component: Displays real-time environmental sensor data.
+  const EnvironmentalData = ({ db, isAuthReady }) => { // Removed appId, as data is at root
     const [envData, setEnvData] = useState({
       temperature: '--',
       humidity: '--',
       soilMoisture: '--',
       gasLevel: '--',
     });
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
+      // Ensure Firebase DB and authentication are ready before fetching data
       if (!db || !isAuthReady) {
         console.log("DB or Auth not ready for Environmental Data component.");
+        setIsLoading(false);
         return;
       }
 
-      const dbRef = ref(db, '/');
+      // Changed dbPath to fetch directly from the root
+      const dbPath = '/';
+      console.log("Attempting to fetch environmental data from Realtime Database path:", dbPath);
+      const dbRef = ref(db, dbPath);
 
       const unsubscribe = onValue(dbRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
+          console.log("Environmental data fetched from root:", data);
+          // Access properties directly from the root data
           setEnvData({
             temperature: data.temperature ?? '--',
             humidity: data.humidity ?? '--',
@@ -207,7 +227,7 @@ function App() {
             gasLevel: data.gasLevel ?? '--',
           });
         } else {
-          console.log("No environmental data found in Realtime Database.");
+          console.log("No environmental data found at root path:", dbPath);
           setEnvData({
             temperature: '--',
             humidity: '--',
@@ -215,48 +235,58 @@ function App() {
             gasLevel: '--',
           });
         }
+        setIsLoading(false);
       }, (error) => {
         console.error("Error fetching environmental data from Realtime Database:", error);
+        setIsLoading(false);
       });
 
       return () => unsubscribe();
-    }, [db, isAuthReady]);
+    }, [db, isAuthReady]); // No appId dependency here
 
     return (
       <div className="content p-6 pt-24 min-h-screen bg-gray-900 text-white font-inter">
         <h2 className="mb-8 text-4xl font-extrabold text-center text-green-400">Environmental Data</h2>
-        <div className="reading-container">
-          <div className="reading-box">
-            <div className="circle bg-blue-600 shadow-md flex items-center justify-center text-white text-3xl font-bold rounded-full w-32 h-32 mx-auto mb-2">
-              {envData.temperature}°C
+        {isLoading ? (
+          <div className="text-center text-lg font-semibold text-gray-400">Loading sensor data...</div>
+        ) : (
+          <div className="reading-container">
+            {/* Display Temperature */}
+            <div className="reading-box">
+              <div className="circle bg-blue-600 shadow-md flex items-center justify-center text-white text-3xl font-bold rounded-full w-32 h-32 mx-auto mb-2">
+                {envData.temperature}°C
+              </div>
+              <div className="label text-lg font-semibold text-gray-200">Temperature (°C)</div>
             </div>
-            <div className="label text-lg font-semibold text-gray-200">Temperature (°C)</div>
-          </div>
-          <div className="reading-box">
-            <div className="circle bg-purple-600 shadow-md flex items-center justify-center text-white text-3xl font-bold rounded-full w-32 h-32 mx-auto mb-2">
-              {envData.humidity}%
+            {/* Display Humidity */}
+            <div className="reading-box">
+              <div className="circle bg-purple-600 shadow-md flex items-center justify-center text-white text-3xl font-bold rounded-full w-32 h-32 mx-auto mb-2">
+                {envData.humidity}%
+              </div>
+              <div className="label text-lg font-semibold text-gray-200">Humidity (%)</div>
             </div>
-            <div className="label text-lg font-semibold text-gray-200">Humidity (%)</div>
-          </div>
-          <div className="reading-box">
-            <div className="circle bg-yellow-600 shadow-md flex items-center justify-center text-white text-3xl font-bold rounded-full w-32 h-32 mx-auto mb-2">
-              {envData.soilMoisture}%
+            {/* Display Soil Moisture */}
+            <div className="reading-box">
+              <div className="circle bg-yellow-600 shadow-md flex items-center justify-center text-white text-3xl font-bold rounded-full w-32 h-32 mx-auto mb-2">
+                {envData.soilMoisture}%
+              </div>
+              <div className="label text-lg font-semibold text-gray-200">Soil Moisture (%)</div>
             </div>
-            <div className="label text-lg font-semibold text-gray-200">Soil Moisture (%)</div>
-          </div>
-          <div className="reading-box">
-            <div className="circle bg-red-600 shadow-md flex items-center justify-center text-white text-3xl font-bold rounded-full w-32 h-32 mx-auto mb-2">
-              {envData.gasLevel}%
+            {/* Display Gas Level */}
+            <div className="reading-box">
+              <div className="circle bg-red-600 shadow-md flex items-center justify-center text-white text-3xl font-bold rounded-full w-32 h-32 mx-auto mb-2">
+                {envData.gasLevel}%
+              </div>
+              <div className="label text-lg font-semibold text-gray-200">Gas Level (%)</div>
             </div>
-            <div className="label text-lg font-semibold text-gray-200">Gas Level (%)</div>
           </div>
-        </div>
+        )}
       </div>
     );
   };
 
-  // GeneralCare Component
-  const GeneralCare = ({ db, userId, isAuthReady }) => {
+  // GeneralCare Component: Provides feedback based on environmental sensor data
+  const GeneralCare = ({ db, isAuthReady }) => { // Removed appId, as data is at root
     const [sensorData, setSensorData] = useState({
       temperature: null,
       humidity: null,
@@ -265,14 +295,21 @@ function App() {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-      if (!db || !isAuthReady) return;
+      if (!db || !isAuthReady) {
+        setIsLoading(false);
+        return;
+      }
 
+      // Changed dbPath to fetch directly from the root
       const dbRef = ref(db, '/');
+      console.log("Attempting to fetch general care data from Realtime Database path:", dbRef);
+
 
       const timer = setTimeout(() => {
         const unsubscribe = onValue(dbRef, (snapshot) => {
           const data = snapshot.val();
           if (data) {
+            console.log("General care data fetched from root:", data);
             setSensorData({
               temperature: data.temperature ?? null,
               humidity: data.humidity ?? null,
@@ -295,19 +332,20 @@ function App() {
       }, 1000);
 
       return () => clearTimeout(timer);
-    }, [db, isAuthReady]);
+    }, [db, isAuthReady]); // No appId dependency here
 
     const { temperature, humidity, soilMoisture } = sensorData;
 
+    // Define ideal ranges for each parameter
     const tempGood = temperature !== null && temperature >= 18 && temperature <= 25;
     const humGood = humidity !== null && humidity >= 60 && humidity <= 70;
-    const moistGood = soilMoisture !== null && soilMoisture >= 40 && soilMoisture <= 60; // Corrected moisture check for values greater than 0
-    // If soilMoisture is 0, it's considered 'Bad' according to the ideal range.
-    // If it's null (not received yet), it's also not 'Good'.
+    const moistGood = soilMoisture !== null && soilMoisture >= 40 && soilMoisture <= 60;
 
+    // Helper functions for status display
     const getStatusClass = (isGood) => (isGood ? 'status-good' : 'status-bad');
     const getStatusText = (isGood) => (isGood ? 'Good ✅' : 'Bad ❌');
 
+    // Renders messages and images based on sensor data status
     const renderResponses = () => {
       if (isLoading) {
         return (
@@ -328,7 +366,7 @@ function App() {
           text: 'It’s so dry… I WANT HUMIDIFIER',
         });
       }
-      if (soilMoisture !== null && !moistGood) { // Ensure this block runs when soilMoisture is not good (e.g., 0)
+      if (soilMoisture !== null && !moistGood) {
         badResponses.push({
           img: '/-TomatoHelp/GCare-thirst.png',
           text: 'I am thirsty... GIVE ME WATER',
@@ -417,7 +455,7 @@ function App() {
                 <td className="p-3">Soil Moisture (%)</td>
                 <td className="p-3">
                   {soilMoisture !== null ?
-                    (soilMoisture === 0 ? '0 (No Data)' : soilMoisture) // Display "0 (No Data)" if value is 0
+                    (soilMoisture === 0 ? '0 (No Data)' : soilMoisture)
                     : '-'}
                 </td>
                 <td className="p-3">40 - 60</td>
@@ -437,7 +475,7 @@ function App() {
   };
 
   // EmergencyCare Component
-  const EmergencyCare = ({ db, userId, isAuthReady }) => {
+  const EmergencyCare = ({ db, isAuthReady }) => { // Removed appId, as data is at root
     const [gasLevel, setGasLevel] = useState(null);
     const [statusImage, setStatusImage] = useState('/-TomatoHelp/ECare-happy.png');
     const [statusText, setStatusText] = useState('Loading data...');
@@ -448,13 +486,16 @@ function App() {
     useEffect(() => {
       if (!db || !isAuthReady) return;
 
+      // Changed dbPath to fetch directly from the root
       const dbRef = ref(db, '/');
+      console.log("Attempting to fetch emergency care data from Realtime Database path:", dbRef);
 
       const timer = setTimeout(() => {
         const unsubscribe = onValue(dbRef, (snapshot) => {
           const data = snapshot.val();
           if (data) {
-            const gas = data.gasLevel ?? 0;
+            console.log("Emergency care data fetched from root:", data);
+            const gas = data.gasLevel ?? 0; // Access directly from root
             setGasLevel(gas);
 
             if (gas <= 30) {
@@ -482,9 +523,9 @@ function App() {
           setIsLoading(false);
         });
         return () => unsubscribe();
-      }, 1000); 
+      }, 1000);
       return () => clearTimeout(timer);
-    }, [db, isAuthReady]);
+    }, [db, isAuthReady]); // No appId dependency here
 
     return (
       <div className="content p-6 pt-24 min-h-screen bg-gray-900 text-white font-inter">
@@ -536,7 +577,7 @@ function App() {
   };
 
   // Sowing Component
-  const Sowing = ({ db, userId, isAuthReady }) => {
+  const Sowing = ({ db, isAuthReady }) => { // Removed appId, as data is at root
     const [sensorData, setSensorData] = useState({
       temperature: null,
       humidity: null,
@@ -547,16 +588,19 @@ function App() {
     useEffect(() => {
       if (!db || !isAuthReady) return;
 
+      // Changed dbPath to fetch directly from the root
       const dbRef = ref(db, '/');
+      console.log("Attempting to fetch sowing data from Realtime Database path:", dbRef);
 
       const timer = setTimeout(() => {
         const unsubscribe = onValue(dbRef, (snapshot) => {
           const data = snapshot.val();
           if (data) {
+            console.log("Sowing data fetched from root:", data);
             setSensorData({
-              temperature: data.temperature ?? null,
-              humidity: data.humidity ?? null,
-              soilMoisture: data.soilMoisture ?? null,
+              temperature: data.temperature ?? null, // Access directly from root
+              humidity: data.humidity ?? null,     // Access directly from root
+              soilMoisture: data.soilMoisture ?? null, // Access directly from root
             });
           } else {
             console.log("No sensor data found for Sowing Readiness in Realtime Database.");
@@ -575,7 +619,7 @@ function App() {
       }, 1000);
 
       return () => clearTimeout(timer);
-    }, [db, isAuthReady]);
+    }, [db, isAuthReady]); // No appId dependency here
 
     const { temperature, humidity, soilMoisture } = sensorData;
 
@@ -591,7 +635,6 @@ function App() {
     const renderSowingStatus = () => {
       if (isLoading) {
         return (
-          // Added 'response-block' for consistent styling during loading
           <div className="text-center text-lg font-semibold response-block">Loading data...</div>
         );
       } else if (isReadyForSowing) {
@@ -660,7 +703,7 @@ function App() {
                 <td className="p-3">Soil Moisture (%)</td>
                 <td className="p-3">
                   {soilMoisture !== null ?
-                    (soilMoisture === 0 ? '0 (No Data)' : soilMoisture) // Display "0 (No Data)" if value is 0
+                    (soilMoisture === 0 ? '0 (No Data)' : soilMoisture)
                     : '-'}
                 </td>
                 <td className="p-3">40 - 60</td>
@@ -680,7 +723,7 @@ function App() {
   };
 
   // Harvest Component
-  const Harvest = ({ db, userId, isAuthReady, storage }) => {
+  const Harvest = ({ db, userId, isAuthReady, storage, appId }) => {
     const [formData, setFormData] = useState({
       harvestDate: '',
       quantity: '',
@@ -691,15 +734,17 @@ function App() {
     });
     const [harvestRecords, setHarvestRecords] = useState([]);
     const [message, setMessage] = useState('');
-    const [isLoadingRecords, setIsLoadingRecords] = useState(true); // Separate loading for records
+    const [isLoadingRecords, setIsLoadingRecords] = useState(true);
 
     // Fetch harvest records from Firebase
     useEffect(() => {
-      if (!db || !userId || !isAuthReady) {
+      if (!db || !isAuthReady) { // Removed userId dependency as records are public
         return;
       }
 
-      const harvestRef = ref(db, `users/${userId}/harvestRecords`);
+      // Changed path to fetch harvestRecords directly from the root
+      const harvestRef = ref(db, `harvestRecords`);
+      console.log("Attempting to fetch harvest records from Realtime Database path:", harvestRef);
 
       const unsubscribe = onValue(harvestRef, (snapshot) => {
         const data = snapshot.val();
@@ -712,7 +757,7 @@ function App() {
         }
         loadedRecords.sort((a, b) => new Date(b.harvestDate) - new Date(a.harvestDate));
         setHarvestRecords(loadedRecords);
-        setIsLoadingRecords(false); // Records loaded
+        setIsLoadingRecords(false);
       }, (error) => {
         console.error("Error fetching harvest records:", error);
         setMessage('Error loading harvest records.');
@@ -720,7 +765,7 @@ function App() {
       });
 
       return () => unsubscribe();
-    }, [db, userId, isAuthReady]);
+    }, [db, isAuthReady]); // Removed userId dependency
 
     const handleInputChange = (e) => {
       const { name, value } = e.target;
@@ -733,14 +778,14 @@ function App() {
         setFormData(prev => ({ ...prev, photoFile: file }));
       } else {
         setFormData(prev => ({ ...prev, photoFile: null }));
-      }
+      };
     };
 
     const handleSubmit = async (e) => {
       e.preventDefault();
-      if (!db || !userId || !storage) {
+      if (!db || !userId || !storage || !appId) {
         setMessage('Firebase services not fully initialized. Please wait or check console for errors.');
-        console.error("Firebase services (db, auth, or storage) are not initialized.");
+        console.error("Firebase services (db, auth, storage, or appId) are not initialized.");
         return;
       }
 
@@ -753,7 +798,9 @@ function App() {
       if (formData.photoFile) {
         try {
           const file = formData.photoFile;
-          const filePath = `harvest_images/${userId}/${Date.now()}_${file.name}`;
+          // Storage path still uses appId and userId for organization within storage
+          const filePath = `artifacts/${appId}/users/${userId}/harvest_images/${Date.now()}_${file.name}`;
+          console.log("Attempting to upload image to Storage path:", filePath);
           const imageRef = storageRef(storage, filePath);
 
           await uploadBytes(imageRef, file);
@@ -767,7 +814,10 @@ function App() {
       }
 
       try {
-        const newRecordRef = push(ref(db, `users/${userId}/harvestRecords`));
+        // Changed path to push harvestRecords directly to the root
+        const dbPath = `harvestRecords`;
+        console.log("Attempting to add harvest record to Realtime Database path:", dbPath);
+        const newRecordRef = push(ref(db, dbPath));
         await set(newRecordRef, {
           harvestDate: formData.harvestDate,
           quantity: parseFloat(formData.quantity),
@@ -775,6 +825,7 @@ function App() {
           notes: formData.notes,
           photoURL: uploadedPhotoURL,
           timestamp: Date.now(),
+          userId: userId, // Store userId with the record even if data path is public
         });
         setMessage('Harvest record submitted successfully!');
         setFormData({
@@ -798,14 +849,37 @@ function App() {
       }
     };
 
-    const handleDeleteRecord = async (recordId) => {
-      if (!db || !userId) {
-        setMessage('Firebase not initialized or user not authenticated. Cannot delete record.');
+    const handleDeleteRecord = async (recordId, photoUrl) => {
+      if (!db || !userId || !appId || !storage) {
+        setMessage('Firebase not initialized, user not authenticated, or appId/storage not available. Cannot delete record.');
         return;
       }
       try {
-        const recordRef = ref(db, `users/${userId}/harvestRecords/${recordId}`);
+        // Changed path to remove harvestRecords directly from the root
+        const dbPath = `harvestRecords/${recordId}`;
+        console.log("Attempting to delete harvest record from Realtime Database path:", dbPath);
+        const recordRef = ref(db, dbPath);
         await remove(recordRef);
+
+        // If there's an associated photo, delete it from Storage
+        if (photoUrl) {
+          const pathRegex = /o\/(.+)\?alt/;
+          const match = photoUrl.match(pathRegex);
+          let storagePath = null;
+          if (match && match[1]) {
+            storagePath = decodeURIComponent(match[1]);
+          }
+
+          if (storagePath) {
+            const imageRef = storageRef(storage, storagePath);
+            console.log("Attempting to delete image from Storage path:", storagePath);
+            await deleteObject(imageRef);
+            console.log("Associated image deleted from Storage.");
+          } else {
+            console.warn("Could not extract storage path from photoURL:", photoUrl);
+          }
+        }
+
         setMessage('Harvest record deleted successfully!');
       } catch (error) {
         console.error("Error deleting harvest record:", error);
@@ -895,7 +969,7 @@ function App() {
         <h2 className="mb-4 mt-8 text-center text-4xl font-extrabold text-orange-400">Harvest Records</h2>
 
         <div className="harvest-records-table-container w-full max-w-4xl mx-auto p-6 bg-gray-800 rounded-lg shadow-xl">
-          {isLoadingRecords ? ( 
+          {isLoadingRecords ? (
             <div className="text-center text-lg font-semibold text-gray-400">Loading harvest records...</div>
           ) : harvestRecords.length === 0 ? (
             <div className="text-center text-lg font-semibold text-gray-400">No harvest records found.</div>
@@ -936,7 +1010,7 @@ function App() {
                         </td>
                         <td className="p-3">
                           <button
-                            onClick={() => handleDeleteRecord(record.id)}
+                            onClick={() => handleDeleteRecord(record.id, record.photoURL)} // Pass photoURL to delete
                             className="btn btn-danger p-2 rounded-md text-sm font-semibold bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition duration-300 ease-in-out"
                           >
                             Delete
@@ -954,35 +1028,64 @@ function App() {
     );
   };
 
-const Home = () => (
-  <div
-    className="main-content flex-grow flex items-center justify-center p-4 pt-24 min-h-screen bg-cover bg-center font-inter"
-    style={{ backgroundImage: `url("tomatoes.png")` }}
-  >
-    <div className="content-box bg-black/50 px-10 py-6 rounded-[30px] shadow-2xl text-white text-center w-full max-w-5xl">
-      <h1 className="text-3xl md:text-4xl font-extrabold mb-2 tracking-wide leading-tight">
-        Welcome to TomatoHelp
-      </h1>
-      <p className="text-base md:text-lg text-white/80 tracking-wide leading-relaxed">
-        Monitor your tomato growth from sowing to harvest
-      </p>
+const Home = ({ setCurrentPage, user }) => { // Added user and setCurrentPage props
+  return (
+    <div
+      className="main-content flex-grow flex items-center justify-center p-4 pt-24 min-h-screen bg-cover bg-center font-inter"
+      style={{ backgroundImage: `url("https://images-prod.healthline.com/hlcmsresource/images/AN_images/tomatoes-1296x728-feature.jpg")` }}
+    >
+      <div className="content-box bg-black/50 px-10 py-6 rounded-[30px] shadow-2xl text-white text-center w-full max-w-5xl">
+        <h1 className="text-3xl md:text-4xl font-extrabold mb-2 tracking-wide leading-tight">
+          Welcome to TomatoHelp
+        </h1>
+        <p className="text-base md:text-lg text-white/80 tracking-wide leading-relaxed">
+          Your ultimate companion for nurturing healthy and thriving tomato plants. Get real-time environmental data, learn about sowing, general and emergency care, and log your harvests.
+        </p>
+        {/* Show user info if authenticated, otherwise prompt for login */}
+        {user && !user.isAnonymous ? (
+          <div className="user-info text-center mt-6">
+            <p className="text-xl text-gray-200 mb-4">Hello, {user.email || "Gardener"}!</p>
+            <p className="text-md text-gray-400">Your User ID: <span className="font-mono bg-gray-800 p-2 rounded-md break-all">{user.uid}</span></p>
+            <p className="text-lg text-gray-300 mt-6">
+              Navigate using the menu above to explore your tomato data.
+            </p>
+          </div>
+        ) : (
+          <div className="auth-prompt mt-6">
+            <p className="text-lg text-gray-300 mb-4">Please log in to manage your harvest records.</p>
+            <button
+              onClick={() => setCurrentPage('login')}
+              className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg transform hover:scale-105 transition duration-300 ease-in-out"
+            >
+              Login
+            </button>
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 
-
-  // AuthPage Component for Login/Register
-  const AuthPage = ({ auth }) => {
+  // Login Component: Handles user login with email/password and Google
+  const Login = ({ auth, setCurrentPage }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [isLoggingIn, setIsLoggingIn] = useState(false);
 
     const handleLogin = async (e) => {
       e.preventDefault();
       setError('');
+      setIsLoggingIn(true);
+      if (!auth) {
+        setError("Firebase Auth not initialized.");
+        setIsLoggingIn(false);
+        return;
+      }
       try {
         await signInWithEmailAndPassword(auth, email, password);
+        setCurrentPage('home'); // Redirect to home on successful login
       } catch (err) {
         let errorMessage = 'An unexpected error occurred.';
         if (err.code) {
@@ -999,46 +1102,163 @@ const Home = () => (
             case 'auth/wrong-password':
               errorMessage = 'Incorrect password.';
               break;
+            case 'auth/invalid-credential': // More generic for failed login
+              errorMessage = 'Invalid email or password.';
+              break;
             default:
               errorMessage = err.message;
           }
         }
         setError(errorMessage);
         console.error("Authentication error:", err);
+      } finally {
+        setIsLoggingIn(false);
+      }
+    };
+
+    // Google login function
+    const handleGoogleLogin = async () => {
+      setError('');
+      setIsLoggingIn(true);
+      if (!auth) {
+        setError("Firebase Auth not initialized.");
+        setIsLoggingIn(false);
+        return;
+      }
+      try {
+        const provider = new GoogleAuthProvider();
+        await signInWithPopup(auth, provider);
+        setCurrentPage('home'); // Redirect to home on successful Google login
+      } catch (err) {
+        console.error("Error logging in with Google:", err);
+        setError(err.message);
+      } finally {
+        setIsLoggingIn(false);
       }
     };
 
     return (
-      <div className="main-content flex-grow flex items-center justify-center p-4 pt-24 min-h-screen bg-gray-900 font-inter">
-        <div className="auth-box bg-gray-800 bg-opacity-70 p-8 rounded-2xl shadow-2xl text-white text-center border border-gray-700 w-full max-w-md">
-          <h2 className="mb-6 text-3xl font-bold text-teal-300">Login to TomatoHelp</h2>
-          <form onSubmit={handleLogin}>
-            <div className="mb-4">
-              <label htmlFor="emailInput" className="form-label block text-gray-200 text-sm font-bold mb-2 text-left">Email address</label>
+      <div className="main-content flex-grow flex items-center justify-center p-4 min-h-screen bg-gray-900 font-inter">
+        <div className="auth-box login-design-override p-8 rounded-2xl w-full relative"> {/* Removed max-w-xl here */}
+          <h2 className="mb-6 text-3xl font-bold text-white text-center">Login to TomatoHelp</h2>
+          <form onSubmit={handleLogin} className="flex flex-col items-center"> {/* Centering form content */}
+            <div className="mb-4 w-full"> {/* Full width for input containers */}
+              <label htmlFor="emailInput" className="form-label block text-white text-base font-medium mb-2 text-left">Email address</label>
               <input
                 type="email"
-                className="form-control w-full p-3 rounded-md bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="form-control w-full p-3 rounded-lg bg-transparent border border-gray-500 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
                 id="emailInput"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>
-            <div className="mb-6">
-              <label htmlFor="passwordInput" className="form-label block text-gray-200 text-sm font-bold mb-2 text-left">Password</label>
+            <div className="mb-6 w-full"> {/* Full width for input containers */}
+              <label htmlFor="passwordInput" className="form-label block text-white text-base font-medium mb-2 text-left">Password</label>
               <input
                 type="password"
-                className="form-control w-full p-3 rounded-md bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
                 id="passwordInput"
+                className="shadow appearance-none border rounded-lg w-full py-3 px-4 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-teal-500 bg-transparent border-gray-500" /* Changed text-gray-700 to text-white */
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
             </div>
-            {error && <div className="bg-red-900 text-red-200 p-3 rounded-md mt-4 text-sm">{error}</div>}
-            <div className="d-grid gap-2 mt-6">
-              <button type="submit" className="btn btn-success w-full p-3 rounded-lg font-bold bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-300 ease-in-out">
-                Login
+            {error && <div className="bg-red-900 text-red-200 p-3 rounded-md mt-4 text-sm w-full">{error}</div>}
+            <div className="d-grid gap-2 mt-6 w-full">
+              <button
+                type="submit"
+                className="btn btn-success w-full p-3 rounded-lg font-bold bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-300 ease-in-out"
+                disabled={isLoggingIn}
+              >
+                {isLoggingIn ? 'Logging In...' : 'Login'}
+              </button>
+            </div>
+          </form>
+          {/* Google Login button added below the main login button */}
+          <div className="d-grid gap-2 mt-4 w-full">
+            <button
+              onClick={handleGoogleLogin}
+              className="btn w-full p-3 rounded-lg font-bold bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-300 ease-in-out text-white flex items-center justify-center"
+              disabled={isLoggingIn}
+            >
+              {/* Adjusted Google SVG size to w-5 h-5 for a slightly larger logo */}
+              <svg className="w-5 h-5 mr-2" viewBox="0 0 533.5 544.3" xmlns="http://www.w3.org/2000/svg"><path d="M533.5 272.3c0-18.7-1.5-36.9-4.7-54.7H272.7v104.9h146.4c-6.6 34.6-26.6 63.9-56.7 83.7l-0.3 1.9 88.5 68.6 0.8 1.4c52.2-48.2 82.5-118.8 82.5-200.8z" fill="#4285F4"/><path d="M272.7 544.3c73.3 0 134.9-24.2 179.6-65.7l-89.2-68.9c-24.8 16.5-56.4 26.5-90.4 26.5-69.5 0-128.3-46.7-149.2-109.1l-1.3-0.7-8.9 69.9-0.5 1.7C90.2 467.4 177.5 544.3 272.7 544.3z" fill="#34A853"/><path d="M123.5 329.3c-11.4-32.3-11.4-66.9 0-99.2l-0.8-2.6-86.8-67.1-1.6 0.9C10.7 190 0 229.8 0 272.3s10.7 82.3 29.5 119l87.6 67.8 0.8-2.6z" fill="#FBBC04"/><path d="M272.7 107.5c39.1 0 74.5 13.9 102.1 39.5l75.4-75.4C407.8 24.5 345.5 0 272.7 0 177.5 0 90.2 76.9 29.5 160.7l87.6 67.8C144.4 154.2 203.2 107.5 272.7 107.5z" fill="#EA4335"/></svg>
+              {isLoggingIn ? 'Signing In...' : 'Sign in with Google'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+
+  // SignUp Component: Not directly linked or used in navigation for this scenario
+  const SignUp = ({ auth, setCurrentPage }) => {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [isSigningUp, setIsSigningUp] = useState(false);
+
+    const handleSignUp = async (e) => {
+      e.preventDefault();
+      setError('');
+      setIsSigningUp(true);
+      if (!auth) {
+        setError("Firebase Auth not initialized.");
+        setIsSigningUp(false);
+        return;
+      }
+      try {
+        await createUserWithEmailAndPassword(auth, email, password);
+        setCurrentPage('home');
+      } catch (err) {
+        console.error("Error signing up:", err);
+        setError(err.message);
+      } finally {
+        setIsSigningUp(false);
+      }
+    };
+
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-900 pt-24 pb-12">
+        <div className="bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-md">
+          <h2 className="text-3xl font-extrabold text-center text-green-400 mb-6">Sign Up</h2>
+          <form onSubmit={handleSignUp}>
+            <div className="mb-4">
+              <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="signup-email">
+                Email
+              </label>
+              <input
+                type="email"
+                id="signup-email"
+                className="shadow appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500 bg-gray-700 border-gray-600"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="mb-6">
+              <label className="block text-gray-300 text-sm font-bold mb-2" htmlFor="signup-password">
+                Password
+              </label>
+              <input
+                type="password"
+                id="signup-password"
+                className="shadow appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500 bg-gray-700 border-gray-600"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+            {error && <p className="text-red-500 text-xs italic mb-4">{error}</p>}
+            <div className="flex items-center justify-between">
+              <button
+                type="submit"
+                className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg focus:outline-none focus:shadow-outline transition duration-300 ease-in-out w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isSigningUp}
+              >
+                {isSigningUp ? 'Signing Up...' : 'Sign Up'}
               </button>
             </div>
           </form>
@@ -1046,6 +1266,7 @@ const Home = () => (
       </div>
     );
   };
+
 
   // Render the appropriate component based on authentication state and currentPage state
   const renderAppContent = () => {
@@ -1060,25 +1281,37 @@ const Home = () => (
       );
     }
 
+    // If user is not authenticated (or is anonymous)
     if (!user || user.isAnonymous) {
-      return <AuthPage auth={auth} />;
+      // If currentPage is anything other than 'login', force it to 'login'
+      if (currentPage !== 'login') {
+        setCurrentPage('login'); // This will trigger a re-render
+        // For the current render cycle, still return the Login component directly
+        return <Login auth={auth} setCurrentPage={setCurrentPage} />;
+      }
+      // If currentPage is already 'login', just render it
+      return <Login auth={auth} setCurrentPage={setCurrentPage} />;
     }
 
+    // If user is authenticated (not anonymous), render the requested page
     switch (currentPage) {
       case 'home':
-        return <Home />;
+        return <Home user={user} setCurrentPage={setCurrentPage} />;
       case 'environmental':
-        return <EnvironmentalData db={db} userId={user.uid} isAuthReady={isAuthReady} />;
-      case 'care_general':
-        return <GeneralCare db={db} userId={user.uid} isAuthReady={isAuthReady} />;
-      case 'care_emergency':
-        return <EmergencyCare db={db} userId={user.uid} isAuthReady={isAuthReady} />;
+        return <EnvironmentalData db={db} isAuthReady={isAuthReady} />;
       case 'sowing':
-        return <Sowing db={db} userId={user.uid} isAuthReady={isAuthReady} />;
+        return <Sowing db={db} isAuthReady={isAuthReady} />;
+      case 'care_general':
+        return <GeneralCare db={db} isAuthReady={isAuthReady} />;
+      case 'care_emergency':
+        return <EmergencyCare db={db} isAuthReady={isAuthReady} />;
       case 'harvest':
-        return <Harvest db={db} userId={user.uid} isAuthReady={isAuthReady} storage={storage} />;
+        return <Harvest db={db} userId={user.uid} isAuthReady={isAuthReady} storage={storage} appId={appId} />;
+      case 'login': // If logged in, going to login page should redirect to home
+        setCurrentPage('home'); // User is logged in, no need for login page
+        return <Home user={user} setCurrentPage={setCurrentPage} />; // Render Home directly after setting current page
       default:
-        return <Home />;
+        return <Home user={user} setCurrentPage={setCurrentPage} />;
     }
   };
 
@@ -1092,7 +1325,7 @@ const Home = () => (
       minHeight: '100vh',
       display: 'flex',
       flexDirection: 'column',
-      paddingTop: '70px',
+      paddingTop: currentPage === 'login' ? '0px' : '70px', // No padding-top if on login page
     }}>
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"/>
       <script src="https://cdn.tailwindcss.com"></script>
@@ -1104,6 +1337,12 @@ const Home = () => (
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+          }
+          .app-container {
+            padding-top: 4rem; /* Adjust based on navbar height to prevent content overlap */
+            background-color: #1a202c; /* bg-gray-900 */
+            color: #e2e8f0; /* text-gray-200 */
+            min-height: 100vh;
           }
           .content {
             background: rgba(0, 0, 0, 0.7);
@@ -1229,10 +1468,11 @@ const Home = () => (
           }
 
           .main-content {
+            /* Ensures the container takes full height and uses flexbox to center its child */
             flex-grow: 1;
             display: flex;
-            justify-content: center;
-            align-items: center;
+            justify-content: center; /* Centers horizontally */
+            align-items: center;   /* Centers vertically */
             width: 100%;
             padding: 1rem;
           }
@@ -1337,47 +1577,86 @@ const Home = () => (
           }
 
           .auth-box {
-            max-width: 450px;
-            padding: 2rem;
-            background: rgba(0, 0, 0, 0.75);
-            border-radius: 1.5rem;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.6);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-          }
-          .auth-box .form-label {
-            color: white;
-            font-weight: bold;
-          }
-          .auth-box .form-control {
-            background-color: rgba(255, 255, 255, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            border-radius: 0.5rem;
-          }
-          .auth-box .form-control:focus {
-            background-color: rgba(255, 255, 255, 0.3);
-            border-color: #88b04b;
-            box-shadow: 0 0 0 0.25rem rgba(136, 176, 75, 0.25);
-            color: white;
-          }
-          .auth-box .btn {
-            border-radius: 0.5rem;
-            padding: 0.75rem 1.5rem;
-            font-weight: bold;
-          }
-
-          .emergency-status-display-wrapper {
+            /* This ensures all direct children of auth-box are centered horizontally */
             display: flex;
             flex-direction: column;
-            align-items: center;
-            gap: 1rem;
-            margin-top: 2rem;
-            padding: 1rem;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 1rem;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-            max-width: 350px;
-            width: 100%;
+            align-items: center; 
+            justify-content: center;
+            margin: auto; /* Added for horizontal centering */
+          }
+          
+          /* Specific styles for the login box to match the image */
+          .auth-box.login-design-override {
+              background: rgba(255, 100, 50, 0.15); /* Orange-red tint with transparency */
+              border: 1px solid rgba(255, 255, 255, 0.2); /* Subtle border */
+              box-shadow: 0 5px 15px rgba(0,0,0,0.3); /* Softer shadow */
+              backdrop-filter: blur(12px); /* Stronger blur effect */
+              position: relative;
+              border-radius: 1.2rem; /* More subtle rounded corners */
+
+              /* Responsive width and padding */
+              width: 90%; /* Take 90% of available width on all screens */
+              padding: 2rem; /* Default padding for mobile */
+
+              /* Explicitly setting margin-left and margin-right to auto to ensure centering */
+              margin-left: auto;
+              margin-right: auto;
+
+              @media (min-width: 640px) { /* sm breakpoint */
+                  max-width: 400px; /* Constrain width for small tablets */
+                  padding: 2.5rem;
+              }
+              @media (min-width: 768px) { /* md breakpoint (larger tablets, small laptops) */
+                  max-width: 550px; /* Wider for medium screens */
+                  padding: 3rem;
+              }
+              @media (min-width: 1024px) { /* lg breakpoint (most laptops, desktops) */
+                  max-width: 700px; /* Significantly wider for PC */
+                  padding: 3.5rem;
+              }
+              @media (min-width: 1280px) { /* xl breakpoint (larger desktops) */
+                  max-width: 850px; /* Even wider for large monitors */
+                  padding: 4rem;
+              }
+              @media (min-width: 1536px) { /* 2xl breakpoint (very large desktops) */
+                  max-width: 950px; /* Maximum width on very large screens */
+                  padding: 4.5rem;
+              }
+          }
+
+          /* Adjust font sizes within the auth box for responsiveness */
+          .auth-box h2 {
+            font-size: 2.25rem; /* Default for mobile (3xl in Tailwind) */
+            @media (min-width: 768px) {
+                font-size: 2.5rem; /* Larger on tablets (4xl in Tailwind) */
+            }
+            @media (min-width: 1024px) {
+                font-size: 3rem; /* Even larger on PC (5xl in Tailwind) */
+            }
+          }
+
+          .auth-box .form-label {
+            font-size: 1rem; /* Default for mobile (base in Tailwind) */
+            @media (min-width: 768px) {
+                font-size: 1.125rem; /* Slightly larger on tablets (lg in Tailwind) */
+            }
+            @media (min-width: 1024px) {
+                font-size: 1.25rem; /* Larger on PC (xl in Tailwind) */
+            }
+          }
+
+          .auth-box .form-control {
+            padding: 0.8rem 1rem; /* Default for mobile */
+            @media (min-width: 768px) {
+                padding: 1rem 1.2rem; /* Larger padding for inputs */
+            }
+          }
+
+          .auth-box .btn {
+            padding: 0.75rem 1.5rem; /* Default for mobile */
+            @media (min-width: 768px) {
+                padding: 1rem 2rem; /* Larger buttons */
+            }
           }
 
           @media (max-width: 991.98px) {
@@ -1401,7 +1680,7 @@ const Home = () => (
               white-space: normal;
               letter-spacing: 0.02em;
             }
-            .harvest-form-container, .harvest-records-table-container, .auth-box {
+            .harvest-form-container, .harvest-records-table-container {
               max-width: 95%;
               padding: 1.5rem;
             }
@@ -1438,7 +1717,8 @@ const Home = () => (
         `}
       </style>
 
-      {user && !user.isAnonymous && <Navbar />}
+      {/* Navbar only visible if not on the login page */}
+      {currentPage !== 'login' && <Navbar />}
       {renderAppContent()}
       <footer>
         © 2025 TomatoHelp. All rights reserved.
