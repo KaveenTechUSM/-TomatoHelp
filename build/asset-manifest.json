@@ -1,10 +1,19 @@
 {
   "files": {
+<<<<<<< HEAD
     "main.js": "/-TomatoHelp/static/js/main.c21cc066.js",
     "index.html": "/-TomatoHelp/index.html",
     "main.c21cc066.js.map": "/-TomatoHelp/static/js/main.c21cc066.js.map"
   },
   "entrypoints": [
     "static/js/main.c21cc066.js"
+=======
+    "main.js": "/-TomatoHelp/static/js/main.24f63768.js",
+    "index.html": "/-TomatoHelp/index.html",
+    "main.24f63768.js.map": "/-TomatoHelp/static/js/main.24f63768.js.map"
+  },
+  "entrypoints": [
+    "static/js/main.24f63768.js"
+>>>>>>> c373e8b712700d1a3e72cb0dd84e7b943d8bb9a8
   ]
 }
