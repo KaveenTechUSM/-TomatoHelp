@@ -1143,7 +1143,7 @@ const Home = ({ setCurrentPage, user }) => { // Added user and setCurrentPage pr
           <h2 className="mb-6 text-3xl font-bold text-white text-center">Login to TomatoHelp</h2>
           <form onSubmit={handleLogin} className="flex flex-col items-center"> {/* Centering form content */}
             <div className="mb-4 w-full"> {/* Full width for input containers */}
-              <label htmlFor="emailInput" className="form-label block text-white text-base font-medium mb-2 text-left">Email address</label>
+              <label htmlFor="emailInput" className="form-label block text-white text-base font-medium mb-2 mx-auto">Email address</label>
               <input
                 type="email"
                 className="form-control w-full p-3 rounded-lg bg-transparent border border-gray-500 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
@@ -1154,7 +1154,7 @@ const Home = ({ setCurrentPage, user }) => { // Added user and setCurrentPage pr
               />
             </div>
             <div className="mb-6 w-full"> {/* Full width for input containers */}
-              <label htmlFor="passwordInput" className="form-label block text-white text-base font-medium mb-2 text-left">Password</label>
+              <label htmlFor="passwordInput" className="form-label block text-white text-base font-medium mb-2 mx-auto">Password</label>
               <input
                 type="password"
                 id="passwordInput"
@@ -1593,6 +1593,7 @@ const Home = ({ setCurrentPage, user }) => { // Added user and setCurrentPage pr
               backdrop-filter: blur(12px); /* Stronger blur effect */
               position: relative;
               border-radius: 1.2rem; /* More subtle rounded corners */
+              text-align: center; /* Added to center text within the auth box */
 
               /* Responsive width and padding */
               width: 90%; /* Take 90% of available width on all screens */
@@ -1637,6 +1638,8 @@ const Home = ({ setCurrentPage, user }) => { // Added user and setCurrentPage pr
 
           .auth-box .form-label {
             font-size: 1rem; /* Default for mobile (base in Tailwind) */
+            text-align: center; /* Ensures text inside label is centered */
+            width: 100%; /* Make label take full width to center its text properly */
             @media (min-width: 768px) {
                 font-size: 1.125rem; /* Slightly larger on tablets (lg in Tailwind) */
             }
